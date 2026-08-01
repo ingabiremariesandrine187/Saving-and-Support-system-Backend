@@ -1,0 +1,162 @@
+const bcrypt = require('bcryptjs');
+const jwt    = require('jsonwebtoken');
+const { findUserByEmail, findUserByPhone, createUser, findUserByEmailWithPassword } = require('../models/User');
+const { findClubByName }  = require('../models/Club');
+
+// Allowed values
+const ALLOWED_REFERRALS = ['RBA', 'Internet', 'Social Media', 'Influencers'];
+const ALLOWED_PURPOSES  = ['Supporting a Club', 'Save for Home', 'Save for Seasons', 'Save for School Fees'];
+
+// ─── POST /api/auth/register ──────────────────────────────────────────────────
+const registerUser = async (req, res) => {
+  try {
+    // 1. Extract fields from the request body
+    const {
+      firstName,
+      lastName,
+      email,
+      phoneNumber,
+      referral,
+      password,
+      confirmPassword,
+      purpose,
+      selectedClub, // primary source for club association
+    } = req.body;
+
+    // 2. Check all core required fields are present
+    if (!firstName || !lastName || !email || !phoneNumber || !referral || !password || !confirmPassword || !purpose) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+
+    // 3. Check passwords match
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match.' });
+    }
+
+    // 4. Validate password strength (min 8 chars, at least one letter and one number)
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include at least one letter and one number.'
+      });
+    }
+
+    // 5. Validate referral value
+    if (!ALLOWED_REFERRALS.includes(referral)) {
+      return res.status(400).json({ message: 'Invalid referral value.' });
+    }
+
+    // 6. Validate purpose value
+    if (!ALLOWED_PURPOSES.includes(purpose)) {
+      return res.status(400).json({ message: 'Invalid purpose value.' });
+    }
+
+    // 7. If purpose is "Supporting a Club", selectedClub is required and must exist
+    let clubId = null;
+    if (purpose === 'Supporting a Club') {
+      if (!selectedClub) {
+        return res.status(400).json({ message: 'Please select a club to support.' });
+      }
+
+      // Resolve the club name to an id
+      const club = await findClubByName(selectedClub.trim());
+      if (!club) {
+        return res.status(400).json({ message: `Club "${selectedClub}" was not found. Please select a valid club.` });
+      }
+      clubId = club.id;
+    }
+
+    // 8. Check for duplicate email
+    const existingEmail = await findUserByEmail(email.toLowerCase());
+    if (existingEmail) {
+      return res.status(409).json({ message: 'An account with this email already exists.' });
+    }
+
+    // 9. Check for duplicate phone number
+    const existingPhone = await findUserByPhone(phoneNumber);
+    if (existingPhone) {
+      return res.status(409).json({ message: 'An account with this phone number already exists.' });
+    }
+
+    // 10. Hash the password
+    const saltRounds  = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // 11. Save the new user — club_id is null for non-club purposes
+    const newUser = await createUser({
+      firstName,
+      lastName,
+      email:        email.toLowerCase(),
+      phoneNumber,
+      referral,
+      passwordHash,
+      purpose,
+      clubId,
+    });
+
+    // 12. Return success response
+    return res.status(201).json({
+      message: 'Registration successful.',
+      user: {
+        id:          newUser.id,
+        firstName:   newUser.first_name,
+        lastName:    newUser.last_name,
+        email:       newUser.email,
+        phoneNumber: newUser.phone_number,
+        referral:    newUser.referral,
+        purpose:     newUser.purpose,
+        clubId:      newUser.club_id,
+        createdAt:   newUser.created_at,
+      },
+    });
+
+  } catch (error) {
+    console.error('Registration error:', error.message);
+    return res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+};
+
+// ─── POST /api/auth/login ─────────────────────────────────────────────────────
+const loginUser = async (req, res) => {
+  try {
+    // 1. Extract email and password
+    const { email, password } = req.body;
+
+    // 2. Check both fields are present
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    // 3. Find the user by email (includes password_hash)
+    const user = await findUserByEmailWithPassword(email.toLowerCase());
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    // 4. Compare submitted password against stored bcrypt hash
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    // 5. Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    // 6. Return the token
+    return res.status(200).json({
+      message: 'Login successful.',
+      token,
+    });
+
+  } catch (error) {
+    console.error('Login error:', error.message);
+    return res.status(500).json({ message: 'Server error. Please try again later.' });
+  }
+};
+
+// ─── Exports — must be at the bottom after both functions are defined ─────────
+module.exports = { registerUser, loginUser };
