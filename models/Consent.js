@@ -3,7 +3,8 @@ const pool = require('../config/db');
 // Check if a consent record already exists for this user
 const findConsentByUserId = async (userId) => {
   const result = await pool.query(
-    `SELECT id, user_id, club_id, agreed, payment_frequency, amount, created_at, updated_at
+    `SELECT id, user_id, club_id, agreed, payment_frequency, amount,
+            otp_code, otp_expires_at, is_verified, created_at, updated_at
      FROM consents
      WHERE user_id = $1`,
     [userId]
