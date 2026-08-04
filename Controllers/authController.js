@@ -7,7 +7,7 @@ const { findClubByName }  = require('../models/Club');
 const ALLOWED_REFERRALS = ['RBA', 'Internet', 'Social Media', 'Influencers'];
 const ALLOWED_PURPOSES  = ['Supporting a Club', 'Save for Home', 'Save for Seasons', 'Save for School Fees'];
 
-// ─── POST /api/auth/register ──────────────────────────────────────────────────
+// ─── POST /api/auth/register 
 const registerUser = async (req, res) => {
   try {
     // 1. Extract fields from the request body
@@ -116,7 +116,7 @@ const registerUser = async (req, res) => {
   }
 };
 
-// ─── POST /api/auth/login ─────────────────────────────────────────────────────
+// ─── POST /api/auth/login
 const loginUser = async (req, res) => {
   try {
     // 1. Extract email and password
@@ -139,17 +139,20 @@ const loginUser = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    // 5. Generate JWT token
+     if (['super_admin', 'club_admin'].includes(user.role) && user.is_active === false) {
+      return res.status(403).json({ message: 'This admin account has been disabled. Contact the system owner.' });
+    }
+
     const token = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, role: user.role, clubId: user.club_id },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    // 6. Return the token
     return res.status(200).json({
       message: 'Login successful.',
       token,
+      role: user.role,
     });
 
   } catch (error) {

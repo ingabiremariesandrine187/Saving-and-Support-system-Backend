@@ -70,10 +70,45 @@ const markConsentVerified = async (userId) => {
   return result.rows[0];
 };
 
+// Get all consents for a specific club — used by club_admin dashboard
+// Returns fan details joined with club name, scoped to the admin's club
+const getConsentsByClubId = async (clubId) => {
+  const result = await pool.query(
+    `SELECT cn.id, cn.user_id, cn.club_id, cn.agreed, cn.payment_frequency,
+            cn.amount, cn.is_verified, cn.created_at, cn.updated_at,
+            u.first_name, u.last_name, u.email,
+            c.name AS club_name
+     FROM consents cn
+     JOIN users u ON cn.user_id = u.id
+     JOIN clubs c ON cn.club_id = c.id
+     WHERE cn.club_id = $1
+     ORDER BY cn.created_at DESC`,
+    [clubId]
+  );
+  return result.rows;
+};
+
+// Get all consents across all clubs — used by super_admin dashboard
+const getAllConsents = async () => {
+  const result = await pool.query(
+    `SELECT cn.id, cn.user_id, cn.club_id, cn.agreed, cn.payment_frequency,
+            cn.amount, cn.is_verified, cn.created_at, cn.updated_at,
+            u.first_name, u.last_name, u.email,
+            c.name AS club_name
+     FROM consents cn
+     JOIN users u ON cn.user_id = u.id
+     JOIN clubs c ON cn.club_id = c.id
+     ORDER BY cn.created_at DESC`
+  );
+  return result.rows;
+};
+
 module.exports = {
   findConsentByUserId,
   createConsent,
   updateConsent,
   saveOTP,
   markConsentVerified,
+  getConsentsByClubId,
+  getAllConsents,
 };
