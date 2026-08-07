@@ -1,7 +1,13 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
-const { findUserByEmail, findUserByPhone, createUser, findUserByEmailWithPassword } = require('../models/User');
+const crypto = require('crypto');
+const { findUserByEmail, findUserByPhone, createUser, findUserByEmailWithPassword, findClubAdminByEmail,
+  saveResetToken,
+  findUserByResetToken,
+  updatePassword,
+  clearResetToken } = require('../models/User');
 const { findClubByName }  = require('../models/Club');
+const { sendResetPasswordEmail } = require('../services/emailService');
 
 // Allowed values
 const ALLOWED_REFERRALS = ['RBA', 'Internet', 'Social Media', 'Influencers'];
@@ -161,5 +167,177 @@ const loginUser = async (req, res) => {
   }
 };
 
+// ─── POST /api/auth/forgot-password
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        message: 'Email is required.'
+      });
+    }
+
+    // Find only club admin account
+    const user = await findClubAdminByEmail(email.toLowerCase());
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'Club admin account not found.'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // Token expires after 1 hour
+    const resetTokenExpiry = new Date(
+      Date.now() + 60 * 60 * 1000
+    );
+
+    // Save token in PostgreSQL
+    await saveResetToken(
+      user.id,
+      resetToken,
+      resetTokenExpiry
+    );
+
+    // Send email
+    await sendResetPasswordEmail(
+      user.email,
+      user.first_name,
+      resetToken
+    );
+
+    return res.status(200).json({
+      message: 'Password reset link sent to your email.'
+    });
+
+
+  } catch (error) {
+
+    console.error('Forgot password error:', error.message);
+
+    return res.status(500).json({
+      message: 'Server error. Please try again later.'
+    });
+  }
+};
+
+
+// ─── GET /api/auth/validate-reset-token/:token
+const validateResetToken = async (req, res) => {
+  try {
+
+    const { token } = req.params;
+
+
+    const user = await findUserByResetToken(token);
+
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Invalid or expired reset token.'
+      });
+    }
+
+
+    return res.status(200).json({
+      message: 'Reset token is valid.'
+    });
+
+
+  } catch (error) {
+
+    console.error('Validate token error:', error.message);
+
+    return res.status(500).json({
+      message: 'Server error. Please try again later.'
+    });
+
+  }
+};
+
+
+// ─── POST /api/auth/reset-password
+const resetPassword = async (req, res) => {
+
+  try {
+
+    const {
+      token,
+      newPassword,
+      confirmPassword
+    } = req.body;
+
+
+    if (!token || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: 'Token, new password and confirm password are required.'
+      });
+    }
+
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: 'Passwords do not match.'
+      });
+    }
+
+
+    // Same password rules as registration
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and include at least one letter and one number.'
+      });
+    }
+
+
+    const user = await findUserByResetToken(token);
+
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Invalid or expired reset token.'
+      });
+    }
+
+
+    const passwordHash = await bcrypt.hash(
+      newPassword,
+      10
+    );
+
+
+    await updatePassword(
+      user.id,
+      passwordHash
+    );
+
+
+    // Remove token after successful reset
+    await clearResetToken(user.id);
+
+
+
+    return res.status(200).json({
+      message: 'Password reset successful. You can now login with your new password.'
+    });
+
+
+  } catch (error) {
+
+    console.error('Reset password error:', error.message);
+
+    return res.status(500).json({
+      message: 'Server error. Please try again later.'
+    });
+
+  }
+};
+
+
 // ─── Exports — must be at the bottom after both functions are defined ─────────
-module.exports = { registerUser, loginUser };
+module.exports = { registerUser, loginUser,forgotPassword,validateResetToken,resetPassword };

@@ -6,10 +6,12 @@ const {
   getFans,
   getConsents,
   getPayments,
+  updateFanById,
+  deleteFanById,
 } = require('../Controllers/clubAdminController');
 
 // Every route here requires:
-// 1. protect   — valid JWT token
+// 1. protect     — valid JWT token
 // 2. isClubAdmin — role must be 'club_admin'
 router.use(protect, isClubAdmin);
 
@@ -18,6 +20,12 @@ router.get('/dashboard', getDashboard);
 
 // GET /api/club-admin/fans — all fans belonging to the admin's club
 router.get('/fans', getFans);
+
+// PUT /api/club-admin/fans/:id — update a specific fan (must belong to admin's club)
+router.put('/fans/:id', updateFanById);
+
+// DELETE /api/club-admin/fans/:id — delete a specific fan (must belong to admin's club)
+router.delete('/fans/:id', deleteFanById);
 
 // GET /api/club-admin/consents — all consent records for the admin's club
 router.get('/consents', getConsents);

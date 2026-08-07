@@ -60,8 +60,80 @@ const sendOTPEmail = async (toEmail, firstName, otpCode, expiresInMinutes) => {
     `,
   };
 
-  // nodemailer.sendMail returns a promise — await it so errors are caught by the caller
   await transporter.sendMail(mailOptions);
 };
 
-module.exports = { sendOTPEmail };
+
+// ─── Send Password Reset Email ────────────────────────────────────────────────
+/**
+ * Sends password reset link to a club admin.
+ *
+ * @param {string} toEmail - Club admin email
+ * @param {string} firstName - Club admin first name
+ * @param {string} resetToken - Generated reset token
+ */
+const sendResetPasswordEmail = async (toEmail, firstName, resetToken) => {
+
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  const mailOptions = {
+    from: `"Football Fan Support" <${process.env.EMAIL_USER}>`,
+    to: toEmail,
+    subject: 'Password Reset Request – Football Fan Support',
+
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin:auto; padding:24px; border:1px solid #e0e0e0; border-radius:8px;">
+
+        <h2 style="color:#1a1a2e;">
+          Football Fan Support
+        </h2>
+
+        <p>Hi <strong>${firstName}</strong>,</p>
+
+        <p>
+          We received a request to reset your Club Admin account password.
+        </p>
+
+        <p>
+          Click the button below to create a new password:
+        </p>
+
+        <div style="text-align:center; margin:30px 0;">
+          <a href="${resetLink}"
+             style="
+             background:#e94560;
+             color:white;
+             padding:12px 25px;
+             text-decoration:none;
+             border-radius:5px;
+             display:inline-block;">
+             Reset Password
+          </a>
+        </div>
+
+        <p>
+          This link will expire in <strong>1 hour</strong>.
+        </p>
+
+        <p>
+          If you did not request this password reset, you can ignore this email.
+        </p>
+
+        <hr style="margin:24px 0; border:none; border-top:1px solid #e0e0e0;" />
+
+        <p style="font-size:12px;color:#888;">
+          Football Fan Support System &bull; Do not reply to this email.
+        </p>
+
+      </div>
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
+
+module.exports = { 
+  sendOTPEmail,
+  sendResetPasswordEmail
+};

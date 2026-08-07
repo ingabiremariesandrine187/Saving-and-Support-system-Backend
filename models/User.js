@@ -139,6 +139,113 @@ const setAdminActiveStatus = async (id, isActive) => {
   return result.rows[0];
 };
 
+
+
+// Find a club admin by email - used for forgot password
+const findClubAdminByEmail = async (email) => {
+  const result = await pool.query(
+    `SELECT id, first_name, email
+     FROM users
+     WHERE email = $1
+     AND role = 'club_admin'
+     AND is_active = true`,
+    [email]
+  );
+
+  return result.rows[0];
+};
+
+
+// Save password reset token
+const saveResetToken = async (userId, token, expiry) => {
+  await pool.query(
+    `UPDATE users
+     SET reset_token = $1,
+         reset_token_expiry = $2
+     WHERE id = $3`,
+    [token, expiry, userId]
+  );
+};
+
+
+// Find club admin by valid reset token
+const findUserByResetToken = async (token) => {
+  const result = await pool.query(
+    `SELECT id,
+            email,
+            reset_token_expiry
+     FROM users
+     WHERE reset_token = $1
+     AND role = 'club_admin'
+     AND reset_token_expiry > NOW()`,
+    [token]
+  );
+
+  return result.rows[0];
+};
+
+// Update password
+const updatePassword = async (userId, passwordHash) => {
+  await pool.query(
+    `UPDATE users
+     SET password_hash = $1
+     WHERE id = $2`,
+    [passwordHash, userId]
+  );
+};
+
+// Clear reset token after successful password reset
+const clearResetToken = async (userId) => {
+  await pool.query(
+    `UPDATE users
+     SET reset_token = NULL,
+         reset_token_expiry = NULL
+     WHERE id = $1`,
+    [userId]
+  );
+};
+
+// Find a single fan by id scoped to a specific club
+// Used before update/delete to confirm the fan belongs to the admin's club
+const findFanByIdAndClub = async (fanId, clubId) => {
+  const result = await pool.query(
+    `SELECT id, first_name, last_name, email, phone_number, referral, club_id
+     FROM users
+     WHERE id      = $1
+     AND   club_id = $2
+     AND   role    = 'user'`,
+    [fanId, clubId]
+  );
+  return result.rows[0]; // undefined if fan doesn't exist or belongs to another club
+};
+
+// Update a fan's basic details — club_id cannot be changed by club_admin
+const updateFan = async (fanId, { firstName, lastName, email, phoneNumber, referral }) => {
+  const result = await pool.query(
+    `UPDATE users
+     SET first_name   = COALESCE($1, first_name),
+         last_name    = COALESCE($2, last_name),
+         email        = COALESCE($3, email),
+         phone_number = COALESCE($4, phone_number),
+         referral     = COALESCE($5, referral)
+     WHERE id   = $6
+     AND   role = 'user'
+     RETURNING id, first_name, last_name, email, phone_number, referral, club_id`,
+    [firstName, lastName, email, phoneNumber, referral, fanId]
+  );
+  return result.rows[0];
+};
+
+// Delete a fan and all their related records (consents, payments cascade via FK)
+const deleteFan = async (fanId) => {
+  await pool.query(
+    `DELETE FROM users WHERE id = $1 AND role = 'user'`,
+    [fanId]
+  );
+};
+
+
+
 module.exports = {
   findUserByEmail,
   findUserByPhone,
@@ -152,4 +259,12 @@ module.exports = {
   findAdminById,
   getClubAdmins,
   setAdminActiveStatus,
+  findClubAdminByEmail,
+  saveResetToken,
+  findUserByResetToken,
+  updatePassword,
+  clearResetToken,
+  findFanByIdAndClub,
+  updateFan,
+  deleteFan,
 };
